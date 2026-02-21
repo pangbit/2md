@@ -25,9 +25,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.downloads.download(
       { url: url, filename: title + '/' + localName, saveAs: false },
       () => {
+        // Consume lastError to avoid unchecked error warnings;
+        // always increment so we still resolve even if a download fails.
+        void chrome.runtime.lastError;
         completed++;
-        // Only call sendResponse once — when all downloads are complete.
-        // Chrome messaging only delivers the first sendResponse call.
         if (completed === total) {
           sendResponse({ done: true, completed, total });
         }
