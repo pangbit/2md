@@ -1,4 +1,4 @@
-// Content script: reads DOM, converts to Markdown, collects images
+// content.js — injected into the active tab by popup.js
 
 function sanitizeFilename(title) {
   const cleaned = title
@@ -46,3 +46,17 @@ function rewriteImagePaths(markdown, folderName, urlToLocal) {
     return match;
   });
 }
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action !== 'convert') return;
+
+  const td = new TurndownService();
+  const rawMarkdown = td.turndown(document.body.innerHTML);
+  const title = sanitizeFilename(document.title);
+  const imageUrls = collectImages(rawMarkdown);
+  const urlToLocal = buildUrlMap(imageUrls);
+  const markdown = rewriteImagePaths(rawMarkdown, title, urlToLocal);
+
+  sendResponse({ title, markdown, imageUrls, urlToLocal });
+  return true;
+});
