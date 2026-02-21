@@ -1,0 +1,1 @@
+// Content script: reads DOM, converts to Markdown, collects images

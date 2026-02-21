@@ -1,0 +1,1 @@
+// Popup logic: triggers conversion and shows progress

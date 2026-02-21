@@ -1,0 +1,1 @@
+// Service worker: handles chrome.downloads coordination
