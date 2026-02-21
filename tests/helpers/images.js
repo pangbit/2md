@@ -1,13 +1,3 @@
-// Content script: reads DOM, converts to Markdown, collects images
-
-function sanitizeFilename(title) {
-  const cleaned = title
-    .replace(/[\\/:*?"<>|]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned || 'untitled';
-}
-
 function collectImages(markdown) {
   const regex = /!\[.*?\]\(((?!data:)[^)]+)\)/g;
   const urls = [];
@@ -46,3 +36,5 @@ function rewriteImagePaths(markdown, folderName, urlToLocal) {
     return match;
   });
 }
+
+module.exports = { collectImages, buildUrlMap, rewriteImagePaths };
