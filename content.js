@@ -78,7 +78,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Custom Turndown rule: write local path directly during conversion
   // so there's no URL-matching post-processing step that can misfire
-  const td = new TurndownService({ headingStyle: 'atx' });
+  const td = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+  gfm(td);
   td.addRule('localImages', {
     filter: 'img',
     replacement: (content, node) => {
