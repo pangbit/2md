@@ -13,7 +13,7 @@ btn.addEventListener('click', async () => {
     // Inject Turndown.js and content.js into the active tab
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ['lib/turndown.js', 'content.js'],
+      files: ['lib/turndown.js', 'lib/turndown-plugin-gfm.js', 'content.js'],
     });
 
     // Ask content script to convert the page
