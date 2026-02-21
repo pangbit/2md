@@ -26,7 +26,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       { url: url, filename: title + '/' + localName, saveAs: false },
       () => {
         completed++;
-        sendResponse({ done: completed === total, completed, total });
+        // Only call sendResponse once — when all downloads are complete.
+        // Chrome messaging only delivers the first sendResponse call.
+        if (completed === total) {
+          sendResponse({ done: true, completed, total });
+        }
       }
     );
   }

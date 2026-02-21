@@ -58,5 +58,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const markdown = rewriteImagePaths(rawMarkdown, title, urlToLocal);
 
   sendResponse({ title, markdown, imageUrls, urlToLocal });
-  return true;
 });
