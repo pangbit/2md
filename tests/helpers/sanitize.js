@@ -1,5 +1,3 @@
-// Content script: reads DOM, converts to Markdown, collects images
-
 function sanitizeFilename(title) {
   const cleaned = title
     .replace(/[\\/:*?"<>|]/g, ' ')
@@ -7,3 +5,5 @@ function sanitizeFilename(title) {
     .trim();
   return cleaned || 'untitled';
 }
+
+module.exports = { sanitizeFilename };
