@@ -38,7 +38,9 @@ function svgToPngDataUrl(url) {
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas 2D context unavailable')); return; }
+      ctx.drawImage(img, 0, 0, w, h);
       try {
         resolve(canvas.toDataURL('image/png'));
       } catch (e) {
@@ -63,7 +65,9 @@ function serializeSvgToPng(svgStr, width, height) {
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas 2D context unavailable')); return; }
+      ctx.drawImage(img, 0, 0, w, h);
       try {
         resolve(canvas.toDataURL('image/png'));
       } catch (e) {
@@ -112,14 +116,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (chartIframes.length > 0) {
       await new Promise(resolve => {
-        let pending = chartIframes.length;
+        // Only count iframes we can actually reach; cross-origin or detached
+        // iframes throw on postMessage, so track sent vs expected separately.
+        let sent = 0;
+        chartIframes.forEach((iframe, i) => {
+          try {
+            iframe.contentWindow.postMessage({ type: '2md-capture-svg', id: i }, '*');
+            sent++;
+          } catch (e) { /* cross-origin or detached — skip */ }
+        });
+
+        if (sent === 0) { resolve(); return; }
+
+        let pending = sent;
         const timeout = setTimeout(() => {
           window.removeEventListener('message', handler);
           resolve();
         }, 5000);
 
-        window.addEventListener('message', function handler(event) {
+        function handler(event) {
           if (event.data?.type !== '2md-svg-result') return;
+          // Ignore messages not originating from one of our captured iframes.
+          if (!chartIframes.some(f => f.contentWindow === event.source)) return;
           iframeResults[event.data.id] = {
             title: event.data.title || '',
             html: event.data.html || '',
@@ -131,15 +149,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             window.removeEventListener('message', handler);
             resolve();
           }
-        });
+        }
 
-        chartIframes.forEach((iframe, i) => {
-          try {
-            iframe.contentWindow.postMessage({ type: '2md-capture-svg', id: i }, '*');
-          } catch (e) { pending--; }
-        });
-
-        if (pending <= 0) { clearTimeout(timeout); resolve(); }
+        window.addEventListener('message', handler);
       });
     }
 

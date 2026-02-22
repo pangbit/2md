@@ -16,35 +16,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   const total = imageUrls.length;
 
-  if (total === 0) {
-    sendResponse({ done: true, completed: 0, total: 0 });
-    return true;
-  }
-
-  let completed = 0;
-
+  // Dispatch all downloads and respond immediately. MV3 service workers can be
+  // terminated before async callbacks fire, so we must not defer sendResponse.
+  // chrome.downloads.download() continues even after the service worker sleeps.
   for (const url of imageUrls) {
     const localName = urlToLocal[url];
-    if (!localName) {
-      // URL missing from map (conversion failed); skip rather than creating
-      // a file named "undefined".
-      completed++;
-      if (completed === total) sendResponse({ done: true, completed, total });
-      continue;
-    }
+    if (!localName) continue; // URL missing from map (conversion failed); skip.
     chrome.downloads.download(
       { url: url, filename: title + '/' + localName, saveAs: false },
-      () => {
-        // Consume lastError to avoid unchecked error warnings;
-        // always increment so we still resolve even if a download fails.
-        void chrome.runtime.lastError;
-        completed++;
-        if (completed === total) {
-          sendResponse({ done: true, completed, total });
-        }
-      }
+      () => { void chrome.runtime.lastError; }
     );
   }
 
+  sendResponse({ done: true, total });
   return true;
 });

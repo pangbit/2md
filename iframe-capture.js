@@ -38,7 +38,9 @@ if (window !== window.top) {
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas 2D context unavailable')); return; }
+        ctx.drawImage(img, 0, 0, w, h);
         try { resolve(canvas.toDataURL('image/png')); }
         catch (e) { reject(e); }
       };
@@ -101,6 +103,6 @@ if (window !== window.top) {
       title,
       html: bodyClone.innerHTML,
       pngs,
-    }, '*');
+    }, event.origin || '*');
   });
 }

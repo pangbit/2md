@@ -48,7 +48,7 @@ btn.addEventListener('click', async () => {
 
     chrome.runtime.sendMessage(
       { action: 'download', title, markdown, imageUrls, urlToLocal },
-      (result) => {
+      () => {
         if (chrome.runtime.lastError) {
           setStatus('Failed: ' + chrome.runtime.lastError.message, 'error');
           btn.disabled = false;
