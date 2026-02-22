@@ -101,8 +101,10 @@ Pages like Cloudflare Radar embed charts in `<iframe src="https://radar.cloudfla
 └── tests/
     ├── convert.test.js    # HTML → Markdown conversion
     ├── frontmatter.test.js
-    ├── images.test.js     # Image URL collection and path rewriting
-    └── sanitize.test.js   # Filename sanitization
+    ├── images.test.js     # URL deduplication and path mapping
+    ├── sanitize.test.js   # Filename sanitization
+    ├── svg.test.js        # SVG dimension parsing
+    └── helpers/           # Test utilities (kept in sync with content.js)
 ```
 
 ## Development
