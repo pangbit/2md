@@ -36,7 +36,10 @@ btn.addEventListener('click', async () => {
     });
 
     const response = await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tab.id, { action: 'convert' }, resolve);
+      chrome.tabs.sendMessage(tab.id, { action: 'convert' }, (resp) => {
+        void chrome.runtime.lastError; // consume to suppress "Unchecked lastError" warning
+        resolve(resp);
+      });
     });
 
     if (!response) throw new Error('Unsupported page type');
