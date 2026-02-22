@@ -24,103 +24,343 @@ function buildFrontmatter(meta) {
   return '---\n' + lines.join('\n') + '\n---\n';
 }
 
-// Only download common raster image formats; skip SVG icons, tracking pixels, etc.
-const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif)(\?|#|$)/i;
+// Downloadable image formats (including SVG, which we convert to PNG).
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif|svg)(\?|#|$)/i;
+const SVG_EXT = /\.svg(\?|#|$)/i;
+
+function svgToPngDataUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const w = img.naturalWidth || 300;
+      const h = img.naturalHeight || 150;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// Convert serialized SVG string to PNG data URL using Blob URL (same-origin, no CORS).
+function serializeSvgToPng(svgStr, width, height) {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+      const w = width || img.naturalWidth || 300;
+      const h = height || img.naturalHeight || 150;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      reject(new Error('SVG load failed'));
+    };
+    img.src = blobUrl;
+  });
+}
+
+// Extract dimensions from an SVG element's width/height/viewBox attributes.
+// Returns { w, h } or null if the SVG is too small (icon) or has no dimensions.
+function getSvgDimensions(svg) {
+  let w = parseFloat(svg.getAttribute('width'));
+  let h = parseFloat(svg.getAttribute('height'));
+  const vb = svg.getAttribute('viewBox');
+  if (vb && (!w || !h)) {
+    const parts = vb.split(/[\s,]+/);
+    w = w || parseFloat(parts[2]);
+    h = h || parseFloat(parts[3]);
+  }
+  if (w && h && (w < 64 || h < 64)) return null; // icon or logo
+  return (w && h) ? { w, h } : null;
+}
+
+// Convert an SVG element to a PNG data URL. Returns null on failure.
+async function convertSvgElement(svg) {
+  const dims = getSvgDimensions(svg);
+  if (!dims) return null;
+  const svgStr = new XMLSerializer().serializeToString(svg);
+  return serializeSvgToPng(svgStr, dims.w, dims.h);
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action !== 'convert') return;
 
-  // Readability needs a full document clone (it mutates the DOM)
-  const docClone = document.cloneNode(true);
-  const article = new Readability(docClone).parse();
+  (async () => {
+    // --- Capture SVG charts from cross-origin iframes (e.g. Cloudflare Radar) ---
+    const iframeResults = {}; // iframe index -> { title, pngs }
+    const chartIframes = Array.from(document.querySelectorAll('iframe'))
+      .filter(f => f.src && f.offsetWidth > 100 && f.offsetHeight > 100);
 
-  if (!article) {
-    sendResponse({ error: '无法提取文章正文' });
-    return true;
-  }
+    if (chartIframes.length > 0) {
+      await new Promise(resolve => {
+        let pending = chartIframes.length;
+        const timeout = setTimeout(resolve, 5000);
 
-  // Parse article.content HTML to collect and rewrite images
-  const container = document.createElement('div');
-  container.innerHTML = article.content;
+        window.addEventListener('message', function handler(event) {
+          if (event.data?.type !== '2md-svg-result') return;
+          iframeResults[event.data.id] = {
+            title: event.data.title || '',
+            html: event.data.html || '',
+            pngs: event.data.pngs || [],
+          };
+          pending--;
+          if (pending <= 0) {
+            clearTimeout(timeout);
+            window.removeEventListener('message', handler);
+            resolve();
+          }
+        });
 
-  // Strip whitespace-only text nodes inside table structure elements.
-  // They break the GFM plugin which iterates childNodes to build the separator row.
-  container.querySelectorAll('table, thead, tbody, tfoot, tr').forEach(el => {
-    Array.from(el.childNodes).forEach(n => {
-      if (n.nodeType === 3 && !n.textContent.trim()) n.remove();
-    });
-  });
+        chartIframes.forEach((iframe, i) => {
+          try {
+            iframe.contentWindow.postMessage({ type: '2md-capture-svg', id: i }, '*');
+          } catch (e) { pending--; }
+        });
 
-  // Promote first-row <td> to <th> in headerless tables so GFM plugin can convert them
-  container.querySelectorAll('table').forEach(table => {
-    const firstRow = table.rows && table.rows[0];
-    if (!firstRow) return;
-    const hasTheadOrTh = table.querySelector('thead') ||
-      firstRow.querySelector('th');
-    if (hasTheadOrTh) return;
-    // Safe: content comes from Readability-sanitized article.content
-    Array.from(firstRow.cells).forEach(td => {
-      const th = document.createElement('th');
-      while (td.firstChild) th.appendChild(td.firstChild);
-      td.replaceWith(th);
-    });
-  });
-
-  // Unwrap block elements (<p>, <div>) and <br> inside table cells.
-  // Markdown tables are single-line per cell; block elements break formatting.
-  container.querySelectorAll('td, th').forEach(cell => {
-    cell.querySelectorAll('p, div').forEach(block => {
-      block.replaceWith(...block.childNodes);
-    });
-    cell.querySelectorAll('br').forEach(br => br.replaceWith(' '));
-  });
-
-  // Normalize img srcs to absolute URLs
-  container.querySelectorAll('img').forEach(img => {
-    img.setAttribute('src', img.src);
-  });
-
-  // Collect only raster image URLs (absolute, deduplicated)
-  const imageUrls = [...new Set(
-    Array.from(container.querySelectorAll('img'))
-      .map(img => img.getAttribute('src'))
-      .filter(src => src && IMAGE_EXT.test(src))
-  )];
-
-  const title = sanitizeFilename(article.title || document.title);
-  const urlToLocal = buildUrlMap(imageUrls);
-
-  // Custom Turndown rule: write local path directly during conversion
-  const td = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
-  turndownPluginGfm.gfm(td);
-  td.addRule('localImages', {
-    filter: 'img',
-    replacement: (content, node) => {
-      const src = node.getAttribute('src') || '';
-      const alt = (node.getAttribute('alt') || '').trim();
-      const localName = urlToLocal[src];
-      if (localName) return '![' + alt + '](<./' + title + '/' + localName + '>)';
-      if (IMAGE_EXT.test(src)) return '![' + alt + '](' + src + ')';
-      return ''; // skip icons / tracking pixels
+        if (pending <= 0) { clearTimeout(timeout); resolve(); }
+      });
     }
-  });
 
-  const markdown = td.turndown(container);
+    // --- Phase 1: Before Readability ---
+    // Replace captured iframes with minimal placeholders so Readability preserves
+    // their position. Full iframe content is injected AFTER Readability (Phase 2)
+    // to prevent Readability from stripping titles, legends, and labels.
+    const docClone = document.cloneNode(true);
+    const inlineSvgMap = {}; // placeholder URL -> PNG data URL
+    let svgIdx = 0;
+    const PIXEL_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
 
-  // Build YAML frontmatter with metadata
-  const frontmatter = buildFrontmatter({
-    title: article.title,
-    author: article.byline,
-    source: location.href,
-    date: new Date().toISOString().slice(0, 10),
-  });
+    const cloneIframes = Array.from(docClone.querySelectorAll('iframe'));
+    const origIframes = Array.from(document.querySelectorAll('iframe'));
+    for (let i = 0; i < origIframes.length && i < cloneIframes.length; i++) {
+      const chartIdx = chartIframes.indexOf(origIframes[i]);
+      if (chartIdx < 0 || !iframeResults[chartIdx]) continue;
+      const { title: iframeTitle, html } = iframeResults[chartIdx];
+      if (!html) continue;
 
-  sendResponse({
-    title,
-    markdown: frontmatter + '\n' + markdown,
-    imageUrls,
-    urlToLocal,
-  });
+      // Minimal placeholder: <figure> with text + tiny image keeps Readability happy
+      const fig = docClone.createElement('figure');
+      const cap = docClone.createElement('figcaption');
+      cap.textContent = iframeTitle || 'chart';
+      fig.appendChild(cap);
+      const img = docClone.createElement('img');
+      img.setAttribute('src', PIXEL_GIF);
+      img.setAttribute('data-2md-iframe', String(chartIdx));
+      img.setAttribute('alt', iframeTitle || 'chart');
+      fig.appendChild(img);
+      cloneIframes[i].replaceWith(fig);
+    }
+
+    // Also convert any inline <svg> in the main document (non-iframe)
+    for (const svg of Array.from(docClone.querySelectorAll('svg'))) {
+      try {
+        const pngDataUrl = await convertSvgElement(svg);
+        if (!pngDataUrl) continue;
+        const placeholder = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
+        inlineSvgMap[placeholder] = pngDataUrl;
+        const img = docClone.createElement('img');
+        img.setAttribute('src', placeholder);
+        img.setAttribute('alt', svg.getAttribute('aria-label') || svg.getAttribute('title') || 'chart');
+        svg.replaceWith(img);
+      } catch (e) { /* skip */ }
+    }
+
+    const article = new Readability(docClone).parse();
+
+    if (!article) {
+      sendResponse({ error: '无法提取文章正文' });
+      return;
+    }
+
+    // Parse article.content into an inert document (DOMParser does NOT trigger
+    // resource loading, so placeholder URLs won't cause network errors).
+    const parsedDoc = new DOMParser().parseFromString(
+      '<!DOCTYPE html><html><head><base href="' + location.href.replace(/"/g, '&quot;') +
+      '"></head><body>' + article.content + '</body></html>', 'text/html');
+    const container = parsedDoc.body;
+
+    // --- Phase 2: After Readability ---
+    // Replace iframe placeholders with full iframe content (bypasses Readability
+    // so titles, legends, labels, and footer text are all preserved).
+    container.querySelectorAll('[data-2md-iframe]').forEach(placeholder => {
+      const chartIdx = parseInt(placeholder.getAttribute('data-2md-iframe'));
+      const result = iframeResults[chartIdx];
+      if (!result) return;
+      const { title: iframeTitle, html, pngs } = result;
+
+      // Parse iframe HTML in the inert parsedDoc (no resource loading).
+      // Use <blockquote> so Turndown renders it as a "> " quoted block,
+      // visually distinguishing embedded iframe content from the main article.
+      const wrapper = parsedDoc.createElement('blockquote');
+      wrapper.innerHTML = html;
+
+      // Strip non-content elements that would pollute the markdown
+      wrapper.querySelectorAll('script, style, link, noscript, iframe, svg').forEach(el => el.remove());
+      // Remove hidden elements
+      wrapper.querySelectorAll('[hidden], [aria-hidden="true"], [style*="display:none"], [style*="display: none"]').forEach(el => el.remove());
+
+      // Replace <span data-2md-svg="N"> markers with tracked placeholder URLs
+      wrapper.querySelectorAll('[data-2md-svg]').forEach(marker => {
+        const idx = parseInt(marker.getAttribute('data-2md-svg'));
+        if (pngs[idx]) {
+          const placeholderUrl = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
+          inlineSvgMap[placeholderUrl] = pngs[idx];
+          const img = parsedDoc.createElement('img');
+          img.setAttribute('src', placeholderUrl);
+          img.setAttribute('alt', marker.getAttribute('data-2md-alt') || iframeTitle || 'chart');
+          marker.replaceWith(img);
+        }
+      });
+
+      // Remove non-chart images from iframe content (logos, icons, etc.)
+      // Only keep our placeholder chart images; everything else is auxiliary.
+      wrapper.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src') || '';
+        if (!src.startsWith('https://2md.invalid/')) img.remove();
+      });
+
+      // Replace the placeholder (or its parent <figure>) with full content
+      const parentFig = placeholder.closest('figure');
+      if (parentFig) {
+        parentFig.replaceWith(wrapper);
+      } else {
+        placeholder.replaceWith(wrapper);
+      }
+    });
+
+    // Convert any remaining <svg> elements that survived Readability
+    for (const svg of Array.from(container.querySelectorAll('svg'))) {
+      try {
+        const pngDataUrl = await convertSvgElement(svg);
+        if (!pngDataUrl) continue;
+        const placeholder = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
+        inlineSvgMap[placeholder] = pngDataUrl;
+        const img = parsedDoc.createElement('img');
+        img.setAttribute('src', placeholder);
+        img.setAttribute('alt', svg.getAttribute('aria-label') || svg.getAttribute('title') || 'chart');
+        svg.replaceWith(img);
+      } catch (e) { /* skip */ }
+    }
+
+    // Strip whitespace-only text nodes inside table structure elements.
+    // They break the GFM plugin which iterates childNodes to build the separator row.
+    container.querySelectorAll('table, thead, tbody, tfoot, tr').forEach(el => {
+      Array.from(el.childNodes).forEach(n => {
+        if (n.nodeType === 3 && !n.textContent.trim()) n.remove();
+      });
+    });
+
+    // Promote first-row <td> to <th> in headerless tables so GFM plugin can convert them
+    container.querySelectorAll('table').forEach(table => {
+      const firstRow = table.rows && table.rows[0];
+      if (!firstRow) return;
+      const hasTheadOrTh = table.querySelector('thead') ||
+        firstRow.querySelector('th');
+      if (hasTheadOrTh) return;
+      Array.from(firstRow.cells).forEach(td => {
+        const th = document.createElement('th');
+        while (td.firstChild) th.appendChild(td.firstChild);
+        td.replaceWith(th);
+      });
+    });
+
+    // Unwrap block elements (<p>, <div>) and <br> inside table cells.
+    // Markdown tables are single-line per cell; block elements break formatting.
+    container.querySelectorAll('td, th').forEach(cell => {
+      cell.querySelectorAll('p, div').forEach(block => {
+        block.replaceWith(...block.childNodes);
+      });
+      cell.querySelectorAll('br').forEach(br => br.replaceWith(' '));
+    });
+
+    // Normalize img srcs to absolute URLs
+    container.querySelectorAll('img').forEach(img => {
+      img.setAttribute('src', img.src);
+    });
+
+    // Collect image URLs (absolute, deduplicated)
+    const imageUrls = [...new Set(
+      Array.from(container.querySelectorAll('img'))
+        .map(img => img.getAttribute('src'))
+        .filter(src => src && IMAGE_EXT.test(src))
+    )];
+
+    // Convert SVG images to PNG data URLs
+    const svgToPng = {};
+    for (const url of imageUrls) {
+      if (SVG_EXT.test(url)) {
+        try {
+          svgToPng[url] = await svgToPngDataUrl(url);
+        } catch (e) { /* keep original URL if conversion fails */ }
+      }
+    }
+
+    const title = sanitizeFilename(article.title || document.title);
+    const urlToLocal = buildUrlMap(imageUrls);
+
+    // Rename .svg to .png in local filenames for converted SVGs
+    for (const url of Object.keys(svgToPng)) {
+      if (urlToLocal[url]) {
+        urlToLocal[url] = urlToLocal[url].replace(/\.svg$/i, '.png');
+      }
+    }
+
+    // Custom Turndown rule: write local path directly during conversion
+    const td = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+    turndownPluginGfm.gfm(td);
+    td.addRule('localImages', {
+      filter: 'img',
+      replacement: (content, node) => {
+        const src = node.getAttribute('src') || '';
+        const alt = (node.getAttribute('alt') || '').trim();
+        const localName = urlToLocal[src];
+        if (localName) return '![' + alt + '](<./' + title + '/' + localName + '>)';
+        if (IMAGE_EXT.test(src)) return '![' + alt + '](' + src + ')';
+        return ''; // skip icons / tracking pixels
+      }
+    });
+
+    const markdown = td.turndown(container);
+
+    // Build YAML frontmatter with metadata
+    const frontmatter = buildFrontmatter({
+      title: article.title,
+      author: article.byline,
+      source: location.href,
+      date: new Date().toISOString().slice(0, 10),
+    });
+
+    // Replace SVG URLs and inline SVG placeholders with PNG data URLs for download
+    const allSvgMappings = Object.assign({}, svgToPng, inlineSvgMap);
+    const downloadUrls = imageUrls.map(url => allSvgMappings[url] || url);
+
+    sendResponse({
+      title,
+      markdown: frontmatter + '\n' + markdown,
+      imageUrls: downloadUrls,
+      urlToLocal: remapKeys(urlToLocal, allSvgMappings),
+    });
+  })();
+
   return true;
 });
 
@@ -163,6 +403,17 @@ function rewriteImagePaths(markdown, folderName, urlToLocal) {
     }
     return match;
   });
+}
+
+// Remap urlToLocal keys: replace original SVG URLs with their PNG data URLs
+// so background.js can look up local filenames by the download URL.
+function remapKeys(urlToLocal, svgToPng) {
+  const result = {};
+  for (const [url, localName] of Object.entries(urlToLocal)) {
+    const newKey = svgToPng[url] || url;
+    result[newKey] = localName;
+  }
+  return result;
 }
 
 } // end if (__2md_loaded)

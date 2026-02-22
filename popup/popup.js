@@ -15,6 +15,20 @@ btn.addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+    // Best-effort: inject SVG capture script into all frames (with timeout)
+    try {
+      await Promise.race([
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          files: ['iframe-capture.js'],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('iframe injection timeout')), 5000)),
+      ]);
+    } catch (e) {
+      console.log('[2md] iframe injection skipped:', e.message);
+    }
+
+    // Inject main scripts into the top frame only
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['lib/Readability.js', 'lib/turndown.js', 'lib/turndown-plugin-gfm.js', 'content.js'],
