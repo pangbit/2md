@@ -47,7 +47,7 @@ function svgToPngDataUrl(url) {
         reject(e);
       }
     };
-    img.onerror = reject;
+    img.onerror = () => reject(new Error('SVG img load failed'));
     img.src = url;
   });
 }
