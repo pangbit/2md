@@ -13,7 +13,7 @@ btn.addEventListener('click', async () => {
     // Inject Turndown.js and content.js into the active tab
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ['lib/turndown.js', 'lib/turndown-plugin-gfm.js', 'content.js'],
+      files: ['lib/Readability.js', 'lib/turndown.js', 'lib/turndown-plugin-gfm.js', 'content.js'],
     });
 
     // Ask content script to convert the page
@@ -22,6 +22,7 @@ btn.addEventListener('click', async () => {
     });
 
     if (!response) throw new Error('页面无法转换（不支持的页面类型）');
+    if (response.error) throw new Error(response.error);
 
     const { title, markdown, imageUrls, urlToLocal } = response;
 
