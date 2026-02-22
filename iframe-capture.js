@@ -3,7 +3,7 @@
 // inlines computed styles for visual fidelity, converts SVGs to PNG,
 // and returns the full iframe body HTML with SVGs replaced by <img> placeholders.
 if (window !== window.top && !window.__2md_iframe_loaded) {
-window.__2md_iframe_loaded = true;
+  window.__2md_iframe_loaded = true;
 
   // SVG presentation properties to inline from computed styles.
   const SVG_PROPS = [

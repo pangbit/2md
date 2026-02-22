@@ -27,6 +27,8 @@ function buildFrontmatter(meta) {
 // Downloadable image formats (including SVG, which we convert to PNG).
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif|svg)(\?|#|$)/i;
 const SVG_EXT = /\.svg(\?|#|$)/i;
+// 1x1 transparent GIF — used as iframe placeholder image for Readability
+const PIXEL_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
 
 function svgToPngDataUrl(url) {
   return new Promise((resolve, reject) => {
@@ -162,8 +164,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const docClone = document.cloneNode(true);
     const inlineSvgMap = {}; // placeholder URL -> PNG data URL
     let svgIdx = 0;
-    const PIXEL_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
-
     const cloneIframes = Array.from(docClone.querySelectorAll('iframe'));
     const origIframes = Array.from(document.querySelectorAll('iframe'));
     for (let i = 0; i < origIframes.length && i < cloneIframes.length; i++) {
@@ -227,6 +227,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Use <blockquote> so Turndown renders it as a "> " quoted block,
       // visually distinguishing embedded iframe content from the main article.
       const wrapper = parsedDoc.createElement('blockquote');
+      // SAFETY: wrapper lives in an inert DOMParser document — scripts never execute.
+      // Do NOT move this node into the live document.
       wrapper.innerHTML = html;
 
       // Strip non-content elements that would pollute the markdown
@@ -309,7 +311,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       cell.querySelectorAll('br').forEach(br => br.replaceWith(' '));
     });
 
-    // Normalize img srcs to absolute URLs
+    // Normalize img srcs to absolute URLs.
+    // img.src resolves against the <base href> injected at parsedDoc creation time.
     container.querySelectorAll('img').forEach(img => {
       img.setAttribute('src', img.src);
     });
