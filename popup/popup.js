@@ -35,12 +35,21 @@ btn.addEventListener('click', async () => {
       files: ['lib/Readability.js', 'lib/turndown.js', 'lib/turndown-plugin-gfm.js', 'content.js'],
     });
 
-    const response = await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tab.id, { action: 'convert' }, (resp) => {
-        void chrome.runtime.lastError; // consume to suppress "Unchecked lastError" warning
-        resolve(resp);
-      });
-    });
+    const CONVERSION_TIMEOUT_MS = 30_000;
+    const response = await Promise.race([
+      new Promise((resolve) => {
+        chrome.tabs.sendMessage(tab.id, { action: 'convert' }, (resp) => {
+          void chrome.runtime.lastError; // consume to suppress "Unchecked lastError" warning
+          resolve(resp);
+        });
+      }),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Conversion timed out — the page may be too large')),
+          CONVERSION_TIMEOUT_MS
+        )
+      ),
+    ]);
 
     if (!response) throw new Error('Unsupported page type');
     if (response.error) throw new Error(response.error);
