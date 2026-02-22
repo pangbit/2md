@@ -185,18 +185,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       cloneIframes[i].replaceWith(fig);
     }
 
-    // Also convert any inline <svg> in the main document (non-iframe)
-    for (const svg of Array.from(docClone.querySelectorAll('svg'))) {
-      try {
-        const pngDataUrl = await convertSvgElement(svg);
-        if (!pngDataUrl) continue;
-        const placeholder = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
-        inlineSvgMap[placeholder] = pngDataUrl;
-        const img = docClone.createElement('img');
-        img.setAttribute('src', placeholder);
-        img.setAttribute('alt', svg.getAttribute('aria-label') || svg.getAttribute('title') || 'chart');
-        svg.replaceWith(img);
-      } catch (e) { /* skip */ }
+    // Also convert any inline <svg> in the main document (non-iframe).
+    // Run all conversions in parallel, then apply DOM mutations sequentially.
+    const cloneSvgs = Array.from(docClone.querySelectorAll('svg'));
+    const cloneSvgResults = await Promise.allSettled(cloneSvgs.map(svg => convertSvgElement(svg)));
+    for (let i = 0; i < cloneSvgs.length; i++) {
+      const r = cloneSvgResults[i];
+      if (r.status !== 'fulfilled' || !r.value) continue;
+      const placeholder = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
+      inlineSvgMap[placeholder] = r.value;
+      const img = docClone.createElement('img');
+      img.setAttribute('src', placeholder);
+      img.setAttribute('alt', cloneSvgs[i].getAttribute('aria-label') || cloneSvgs[i].getAttribute('title') || 'chart');
+      cloneSvgs[i].replaceWith(img);
     }
 
     const article = new Readability(docClone).parse();
@@ -262,18 +263,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     });
 
-    // Convert any remaining <svg> elements that survived Readability
-    for (const svg of Array.from(container.querySelectorAll('svg'))) {
-      try {
-        const pngDataUrl = await convertSvgElement(svg);
-        if (!pngDataUrl) continue;
-        const placeholder = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
-        inlineSvgMap[placeholder] = pngDataUrl;
-        const img = parsedDoc.createElement('img');
-        img.setAttribute('src', placeholder);
-        img.setAttribute('alt', svg.getAttribute('aria-label') || svg.getAttribute('title') || 'chart');
-        svg.replaceWith(img);
-      } catch (e) { /* skip */ }
+    // Convert any remaining <svg> elements that survived Readability.
+    // Run all conversions in parallel, then apply DOM mutations sequentially.
+    const containerSvgs = Array.from(container.querySelectorAll('svg'));
+    const containerSvgResults = await Promise.allSettled(containerSvgs.map(svg => convertSvgElement(svg)));
+    for (let i = 0; i < containerSvgs.length; i++) {
+      const r = containerSvgResults[i];
+      if (r.status !== 'fulfilled' || !r.value) continue;
+      const placeholder = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
+      inlineSvgMap[placeholder] = r.value;
+      const img = parsedDoc.createElement('img');
+      img.setAttribute('src', placeholder);
+      img.setAttribute('alt', containerSvgs[i].getAttribute('aria-label') || containerSvgs[i].getAttribute('title') || 'chart');
+      containerSvgs[i].replaceWith(img);
     }
 
     // Strip whitespace-only text nodes inside table structure elements.
@@ -319,15 +321,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .filter(src => src && IMAGE_EXT.test(src))
     )];
 
-    // Convert SVG images to PNG data URLs
+    // Convert SVG images to PNG data URLs (all in parallel)
     const svgToPng = {};
-    for (const url of imageUrls) {
-      if (SVG_EXT.test(url)) {
-        try {
-          svgToPng[url] = await svgToPngDataUrl(url);
-        } catch (e) { /* keep original URL if conversion fails */ }
-      }
-    }
+    const svgImageUrls = imageUrls.filter(url => SVG_EXT.test(url));
+    const svgImageResults = await Promise.allSettled(svgImageUrls.map(url => svgToPngDataUrl(url)));
+    svgImageUrls.forEach((url, i) => {
+      if (svgImageResults[i].status === 'fulfilled') svgToPng[url] = svgImageResults[i].value;
+    });
 
     const title = sanitizeFilename(article.title || document.title);
     const urlToLocal = buildUrlMap(imageUrls);
