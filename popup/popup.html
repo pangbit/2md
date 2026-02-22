@@ -3,14 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { width: 220px; padding: 16px; font-family: sans-serif; }
-    button { width: 100%; padding: 8px; cursor: pointer; font-size: 14px; }
-    #status { margin-top: 10px; font-size: 12px; color: #555; min-height: 16px; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 300px;
+      padding: 20px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #fafafa;
+      color: #1a1a2e;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .header img {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      color: #fff;
+      background: #6366f1;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    button:hover {
+      background: #4f46e5;
+    }
+
+    button:active {
+      background: #4338ca;
+    }
+
+    button:disabled {
+      background: #a5b4fc;
+      cursor: not-allowed;
+    }
+
+    #status {
+      margin-top: 12px;
+      font-size: 13px;
+      min-height: 18px;
+      color: #6b7280;
+      transition: color 0.15s;
+    }
+
+    #status.success { color: #16a34a; }
+    #status.error   { color: #dc2626; }
   </style>
 </head>
 <body>
-  <h3 style="margin:0 0 12px">2md</h3>
-  <button id="save-btn">保存为 Markdown</button>
+  <div class="header">
+    <img src="../icons/icon-48.png" alt="">
+    <h1>2md</h1>
+  </div>
+  <button id="save-btn">Save as Markdown</button>
   <div id="status"></div>
   <script src="popup.js"></script>
 </body>

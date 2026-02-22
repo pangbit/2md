@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="24" fill="#6366f1"/>
+  <text x="64" y="58" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="700" font-size="36" fill="#fff">MD</text>
+  <path d="M52 74 l12 14 l12-14" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

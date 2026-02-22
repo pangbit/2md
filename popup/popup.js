@@ -3,51 +3,48 @@
 const btn = document.getElementById('save-btn');
 const status = document.getElementById('status');
 
+function setStatus(text, type) {
+  status.textContent = text;
+  status.className = type || '';
+}
+
 btn.addEventListener('click', async () => {
   btn.disabled = true;
-  status.textContent = '⏳ 正在转换页面…';
+  setStatus('Converting page...', '');
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    // Inject Turndown.js and content.js into the active tab
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['lib/Readability.js', 'lib/turndown.js', 'lib/turndown-plugin-gfm.js', 'content.js'],
     });
 
-    // Ask content script to convert the page
     const response = await new Promise((resolve) => {
       chrome.tabs.sendMessage(tab.id, { action: 'convert' }, resolve);
     });
 
-    if (!response) throw new Error('页面无法转换（不支持的页面类型）');
+    if (!response) throw new Error('Unsupported page type');
     if (response.error) throw new Error(response.error);
 
     const { title, markdown, imageUrls, urlToLocal } = response;
 
-    if (imageUrls.length > 0) {
-      status.textContent = '⏳ 正在下载图片…';
-    } else {
-      status.textContent = '⏳ 正在下载…';
-    }
+    setStatus(imageUrls.length > 0 ? 'Downloading images...' : 'Saving...', '');
 
-    // Ask background service worker to download everything.
-    // sendResponse is called once when all downloads complete.
     chrome.runtime.sendMessage(
       { action: 'download', title, markdown, imageUrls, urlToLocal },
       (result) => {
         if (chrome.runtime.lastError) {
-          status.textContent = '下载失败: ' + chrome.runtime.lastError.message;
+          setStatus('Failed: ' + chrome.runtime.lastError.message, 'error');
           btn.disabled = false;
           return;
         }
-        status.textContent = '✓ 已保存';
+        setStatus('Saved', 'success');
         btn.disabled = false;
       }
     );
   } catch (e) {
-    status.textContent = '失败: ' + e.message;
+    setStatus('Failed: ' + e.message, 'error');
     btn.disabled = false;
   }
 });
