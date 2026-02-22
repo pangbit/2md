@@ -71,3 +71,43 @@ test('remapKeys keeps original key when no mapping exists', () => {
   const result = remapKeys(urlToLocal, {});
   expect(result['https://example.com/a.png']).toBe('a.png');
 });
+
+// collectImages edge cases
+test('collects image with angle-bracket wrapped URL', () => {
+  const md = '![chart](<./My Folder/chart.png>)';
+  expect(collectImages(md)).toEqual(['./My Folder/chart.png']);
+});
+
+test('collects image with empty alt text', () => {
+  const md = '![](https://example.com/logo.png)';
+  expect(collectImages(md)).toEqual(['https://example.com/logo.png']);
+});
+
+test('returns empty array when no images present', () => {
+  const md = 'Just some text with [a link](https://example.com).';
+  expect(collectImages(md)).toEqual([]);
+});
+
+// rewriteImagePaths edge cases
+test('rewriteImagePaths keeps original when URL not in map', () => {
+  const md = '![a](https://example.com/a.png)';
+  const result = rewriteImagePaths(md, 'Page', {});
+  expect(result).toBe('![a](https://example.com/a.png)');
+});
+
+test('rewriteImagePaths rewrites multiple images', () => {
+  const md = '![a](https://example.com/a.png)\n![b](https://example.com/b.jpg)';
+  const urlToLocal = {
+    'https://example.com/a.png': 'a.png',
+    'https://example.com/b.jpg': 'b.jpg',
+  };
+  const result = rewriteImagePaths(md, 'Page', urlToLocal);
+  expect(result).toBe('![a](<./Page/a.png>)\n![b](<./Page/b.jpg>)');
+});
+
+test('rewriteImagePaths handles angle-bracket wrapped source URL', () => {
+  const md = '![chart](<https://example.com/chart.png>)';
+  const urlToLocal = { 'https://example.com/chart.png': 'chart.png' };
+  const result = rewriteImagePaths(md, 'Page', urlToLocal);
+  expect(result).toBe('![chart](<./Page/chart.png>)');
+});
