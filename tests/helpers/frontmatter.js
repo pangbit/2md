@@ -1,3 +1,4 @@
+// Keep in sync with buildFrontmatter() in content.js
 function buildFrontmatter(meta) {
   const lines = [];
   for (const [key, value] of Object.entries(meta)) {

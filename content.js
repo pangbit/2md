@@ -8,6 +8,7 @@ function sanitizeFilename(title) {
   return cleaned || 'untitled';
 }
 
+// Keep in sync with tests/helpers/frontmatter.js
 function buildFrontmatter(meta) {
   const lines = [];
   for (const [key, value] of Object.entries(meta)) {
