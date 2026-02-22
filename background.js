@@ -3,16 +3,7 @@
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action !== 'download') return;
 
-  const { title, markdown, imageUrls, urlToLocal } = message;
-
-  // Download the .md file via data URL (Blob not available in service worker)
-  const encoded = encodeURIComponent(markdown);
-  const mdDataUrl = 'data:text/markdown;charset=utf-8,' + encoded;
-
-  chrome.downloads.download(
-    { url: mdDataUrl, filename: title + '.md', saveAs: false },
-    () => { void chrome.runtime.lastError; }
-  );
+  const { title, imageUrls, urlToLocal } = message;
 
   const total = imageUrls.length;
 

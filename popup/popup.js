@@ -47,10 +47,19 @@ btn.addEventListener('click', async () => {
 
     const { title, markdown, imageUrls, urlToLocal } = response;
 
+    // Download .md from popup context using Blob URL — avoids data URL size limits
+    // that affect MV3 service workers (which cannot use URL.createObjectURL).
+    const mdBlob = new Blob([markdown], { type: 'text/markdown; charset=utf-8' });
+    const mdBlobUrl = URL.createObjectURL(mdBlob);
+    chrome.downloads.download(
+      { url: mdBlobUrl, filename: title + '.md', saveAs: false },
+      () => { URL.revokeObjectURL(mdBlobUrl); void chrome.runtime.lastError; }
+    );
+
     setStatus(imageUrls.length > 0 ? 'Downloading images...' : 'Saving...', '');
 
     chrome.runtime.sendMessage(
-      { action: 'download', title, markdown, imageUrls, urlToLocal },
+      { action: 'download', title, imageUrls, urlToLocal },
       () => {
         if (chrome.runtime.lastError) {
           setStatus('Failed: ' + chrome.runtime.lastError.message, 'error');
