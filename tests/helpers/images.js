@@ -1,5 +1,5 @@
 function collectImages(markdown) {
-  const regex = /!\[.*?\]\(((?!data:)[^)]+)\)/g;
+  const regex = /!\[.*?\]\(<?((?!data:)[^)>]+)>?\)/g;
   const urls = [];
   let match;
   while ((match = regex.exec(markdown)) !== null) {
@@ -29,9 +29,9 @@ function buildUrlMap(urls) {
 }
 
 function rewriteImagePaths(markdown, folderName, urlToLocal) {
-  return markdown.replace(/!\[(.*?)\]\(([^)]+)\)/g, (match, alt, url) => {
+  return markdown.replace(/!\[(.*?)\]\(<?((?!data:)[^)>]+)>?\)/g, (match, alt, url) => {
     if (urlToLocal[url]) {
-      return '![' + alt + '](./' + folderName + '/' + urlToLocal[url] + ')';
+      return '![' + alt + '](<./' + folderName + '/' + urlToLocal[url] + '>)';
     }
     return match;
   });

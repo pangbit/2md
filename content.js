@@ -1,4 +1,8 @@
 // content.js — injected into the active tab by popup.js
+if (typeof window.__2md_loaded !== 'undefined') {
+  // Already injected; skip re-declaration
+} else {
+window.__2md_loaded = true;
 
 function sanitizeFilename(title) {
   const cleaned = title
@@ -39,6 +43,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const container = document.createElement('div');
   container.innerHTML = article.content;
 
+  // Strip whitespace-only text nodes inside table structure elements.
+  // They break the GFM plugin which iterates childNodes to build the separator row.
+  container.querySelectorAll('table, thead, tbody, tfoot, tr').forEach(el => {
+    Array.from(el.childNodes).forEach(n => {
+      if (n.nodeType === 3 && !n.textContent.trim()) n.remove();
+    });
+  });
+
+  // Promote first-row <td> to <th> in headerless tables so GFM plugin can convert them
+  container.querySelectorAll('table').forEach(table => {
+    const firstRow = table.rows && table.rows[0];
+    if (!firstRow) return;
+    const hasTheadOrTh = table.querySelector('thead') ||
+      firstRow.querySelector('th');
+    if (hasTheadOrTh) return;
+    // Safe: content comes from Readability-sanitized article.content
+    Array.from(firstRow.cells).forEach(td => {
+      const th = document.createElement('th');
+      while (td.firstChild) th.appendChild(td.firstChild);
+      td.replaceWith(th);
+    });
+  });
+
+  // Unwrap block elements (<p>, <div>) and <br> inside table cells.
+  // Markdown tables are single-line per cell; block elements break formatting.
+  container.querySelectorAll('td, th').forEach(cell => {
+    cell.querySelectorAll('p, div').forEach(block => {
+      block.replaceWith(...block.childNodes);
+    });
+    cell.querySelectorAll('br').forEach(br => br.replaceWith(' '));
+  });
+
   // Normalize img srcs to absolute URLs
   container.querySelectorAll('img').forEach(img => {
     img.setAttribute('src', img.src);
@@ -63,13 +99,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const src = node.getAttribute('src') || '';
       const alt = (node.getAttribute('alt') || '').trim();
       const localName = urlToLocal[src];
-      if (localName) return '![' + alt + '](./' + title + '/' + localName + ')';
+      if (localName) return '![' + alt + '](<./' + title + '/' + localName + '>)';
       if (IMAGE_EXT.test(src)) return '![' + alt + '](' + src + ')';
       return ''; // skip icons / tracking pixels
     }
   });
 
-  const markdown = td.turndown(container.innerHTML);
+  const markdown = td.turndown(container);
 
   // Build YAML frontmatter with metadata
   const frontmatter = buildFrontmatter({
@@ -91,7 +127,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // --- Shared helpers (also used by tests/helpers/) ---
 
 function collectImages(markdown) {
-  const regex = /!\[.*?\]\(((?!data:)[^)]+)\)/g;
+  const regex = /!\[.*?\]\(<?((?!data:)[^)>]+)>?\)/g;
   const urls = [];
   let match;
   while ((match = regex.exec(markdown)) !== null) {
@@ -121,10 +157,12 @@ function buildUrlMap(urls) {
 }
 
 function rewriteImagePaths(markdown, folderName, urlToLocal) {
-  return markdown.replace(/!\[(.*?)\]\(([^)]+)\)/g, (match, alt, url) => {
+  return markdown.replace(/!\[(.*?)\]\(<?((?!data:)[^)>]+)>?\)/g, (match, alt, url) => {
     if (urlToLocal[url]) {
-      return '![' + alt + '](./' + folderName + '/' + urlToLocal[url] + ')';
+      return '![' + alt + '](<./' + folderName + '/' + urlToLocal[url] + '>)';
     }
     return match;
   });
 }
+
+} // end if (__2md_loaded)

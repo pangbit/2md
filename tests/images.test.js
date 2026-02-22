@@ -17,7 +17,7 @@ test('rewrites image URLs to local paths', () => {
   const md = '![a](https://example.com/path/photo.png)';
   const urlToLocal = { 'https://example.com/path/photo.png': 'photo.png' };
   const result = rewriteImagePaths(md, 'My Page', urlToLocal);
-  expect(result).toBe('![a](./My Page/photo.png)');
+  expect(result).toBe('![a](<./My Page/photo.png>)');
 });
 
 test('handles duplicate filenames by appending index', () => {
