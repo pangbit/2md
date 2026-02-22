@@ -382,17 +382,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// --- Shared helpers (also used by tests/helpers/) ---
-
-function collectImages(markdown) {
-  const regex = /!\[.*?\]\(<?((?!data:)[^)>]+)>?\)/g;
-  const urls = [];
-  let match;
-  while ((match = regex.exec(markdown)) !== null) {
-    urls.push(match[1]);
-  }
-  return urls;
-}
+// --- URL mapping helpers ---
 
 function buildUrlMap(urls) {
   const seen = {};
@@ -412,15 +402,6 @@ function buildUrlMap(urls) {
     urlToLocal[url] = name;
   }
   return urlToLocal;
-}
-
-function rewriteImagePaths(markdown, folderName, urlToLocal) {
-  return markdown.replace(/!\[(.*?)\]\(<?((?!data:)[^)>]+)>?\)/g, (match, alt, url) => {
-    if (urlToLocal[url]) {
-      return '![' + alt + '](<./' + folderName + '/' + urlToLocal[url] + '>)';
-    }
-    return match;
-  });
 }
 
 // Remap urlToLocal keys: replace original SVG URLs with their PNG data URLs
