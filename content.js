@@ -113,7 +113,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (chartIframes.length > 0) {
       await new Promise(resolve => {
         let pending = chartIframes.length;
-        const timeout = setTimeout(resolve, 5000);
+        const timeout = setTimeout(() => {
+          window.removeEventListener('message', handler);
+          resolve();
+        }, 5000);
 
         window.addEventListener('message', function handler(event) {
           if (event.data?.type !== '2md-svg-result') return;
@@ -277,7 +280,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         firstRow.querySelector('th');
       if (hasTheadOrTh) return;
       Array.from(firstRow.cells).forEach(td => {
-        const th = document.createElement('th');
+        const th = parsedDoc.createElement('th');
         while (td.firstChild) th.appendChild(td.firstChild);
         td.replaceWith(th);
       });
@@ -382,12 +385,12 @@ function buildUrlMap(urls) {
   for (const url of urls) {
     const base = url.split('/').pop().split('?')[0] || 'image';
     let name = base;
-    if (seen[name] !== undefined) {
-      seen[name]++;
-      const dotIdx = name.lastIndexOf('.');
+    if (seen[base] !== undefined) {
+      seen[base]++;
+      const dotIdx = base.lastIndexOf('.');
       name = dotIdx >= 0
-        ? name.slice(0, dotIdx) + '_' + seen[base] + name.slice(dotIdx)
-        : name + '_' + seen[base];
+        ? base.slice(0, dotIdx) + '_' + seen[base] + base.slice(dotIdx)
+        : base + '_' + seen[base];
     } else {
       seen[base] = 0;
     }

@@ -14,6 +14,7 @@ btn.addEventListener('click', async () => {
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) throw new Error('No active tab found');
 
     // Best-effort: inject SVG capture script into all frames (with timeout)
     try {

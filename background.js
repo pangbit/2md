@@ -9,7 +9,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const encoded = encodeURIComponent(markdown);
   const mdDataUrl = 'data:text/markdown;charset=utf-8,' + encoded;
 
-  chrome.downloads.download({ url: mdDataUrl, filename: title + '.md', saveAs: false });
+  chrome.downloads.download(
+    { url: mdDataUrl, filename: title + '.md', saveAs: false },
+    () => { void chrome.runtime.lastError; }
+  );
 
   const total = imageUrls.length;
 
@@ -22,6 +25,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   for (const url of imageUrls) {
     const localName = urlToLocal[url];
+    if (!localName) {
+      // URL missing from map (conversion failed); skip rather than creating
+      // a file named "undefined".
+      completed++;
+      if (completed === total) sendResponse({ done: true, completed, total });
+      continue;
+    }
     chrome.downloads.download(
       { url: url, filename: title + '/' + localName, saveAs: false },
       () => {

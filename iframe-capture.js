@@ -42,7 +42,7 @@ if (window !== window.top) {
         try { resolve(canvas.toDataURL('image/png')); }
         catch (e) { reject(e); }
       };
-      img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(); };
+      img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('SVG img load failed')); };
       img.src = blobUrl;
     });
   }
