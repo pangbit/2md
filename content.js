@@ -218,7 +218,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Replace iframe placeholders with full iframe content (bypasses Readability
     // so titles, legends, labels, and footer text are all preserved).
     container.querySelectorAll('[data-2md-iframe]').forEach(placeholder => {
-      const chartIdx = parseInt(placeholder.getAttribute('data-2md-iframe'));
+      const chartIdx = parseInt(placeholder.getAttribute('data-2md-iframe'), 10);
       const result = iframeResults[chartIdx];
       if (!result) return;
       const { title: iframeTitle, html, pngs } = result;
@@ -236,7 +236,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       // Replace <span data-2md-svg="N"> markers with tracked placeholder URLs
       wrapper.querySelectorAll('[data-2md-svg]').forEach(marker => {
-        const idx = parseInt(marker.getAttribute('data-2md-svg'));
+        const idx = parseInt(marker.getAttribute('data-2md-svg'), 10);
         if (pngs[idx]) {
           const placeholderUrl = 'https://2md.invalid/chart-' + (++svgIdx) + '.png';
           inlineSvgMap[placeholderUrl] = pngs[idx];
