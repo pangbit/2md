@@ -57,8 +57,11 @@ window.__2md_iframe_loaded = true;
     const origSvgs = Array.from(document.querySelectorAll('svg'));
     const bodyClone = document.body.cloneNode(true);
     const cloneSvgs = Array.from(bodyClone.querySelectorAll('svg'));
-    const pngs = []; // array of PNG data URLs, indexed to match __2md_svg_N__ placeholders
+    const pngs = []; // array of PNG data URLs, indexed to match data-2md-svg markers
 
+    // Collect valid SVGs synchronously (getComputedStyle must run before any await),
+    // then convert all to PNG in parallel.
+    const svgJobs = [];
     for (let i = 0; i < origSvgs.length && i < cloneSvgs.length; i++) {
       const svg = origSvgs[i];
       let w = parseFloat(svg.getAttribute('width'));
@@ -70,19 +73,27 @@ window.__2md_iframe_loaded = true;
         h = h || parseFloat(parts[3]);
       }
       if (!w || !h || w < 64 || h < 64) continue;
+      svgJobs.push({
+        svgStr: inlineStyles(svg), // must be called synchronously while layout is live
+        w, h,
+        cloneSvg: cloneSvgs[i],
+        alt: svg.getAttribute('aria-label') || svg.getAttribute('title') || 'chart',
+      });
+    }
 
-      try {
-        const svgStr = inlineStyles(svg);
-        const dataUrl = await svgToPng(svgStr, w, h);
-        const idx = pngs.length;
-        pngs.push(dataUrl);
-        // Replace the cloned SVG with a <span> marker (NOT <img>, which would
-        // trigger a resource load even when disconnected from the live DOM).
-        const marker = document.createElement('span');
-        marker.setAttribute('data-2md-svg', String(idx));
-        marker.setAttribute('data-2md-alt', svg.getAttribute('aria-label') || svg.getAttribute('title') || 'chart');
-        cloneSvgs[i].replaceWith(marker);
-      } catch (e) { /* skip unconvertible SVGs */ }
+    // Run all PNG conversions in parallel, then apply DOM mutations sequentially.
+    const jobResults = await Promise.allSettled(svgJobs.map(j => svgToPng(j.svgStr, j.w, j.h)));
+    for (let i = 0; i < svgJobs.length; i++) {
+      const r = jobResults[i];
+      if (r.status !== 'fulfilled') continue;
+      const idx = pngs.length;
+      pngs.push(r.value);
+      // Replace the cloned SVG with a <span> marker (NOT <img>, which would
+      // trigger a resource load even when disconnected from the live DOM).
+      const marker = document.createElement('span');
+      marker.setAttribute('data-2md-svg', String(idx));
+      marker.setAttribute('data-2md-alt', svgJobs[i].alt);
+      svgJobs[i].cloneSvg.replaceWith(marker);
     }
 
     // Normalize img src to absolute URLs so they resolve correctly
